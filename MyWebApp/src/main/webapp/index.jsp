@@ -1,5 +1,5 @@
 <html>
 <body>
-<h2>This is good luck message judt to make a changetoday,checking on git now,trying again</h2>
+<h2>This is for checking in code in github</h2>
 </body>
 </html>
