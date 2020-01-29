@@ -1,0 +1,73 @@
+node {
+
+    def mvnHome = tool 'maven5'
+    stage ("checkout")  {
+     checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/agunuworld4/myProject']]])
+    }
+
+   stage ('build')  {
+    sh "${mvnHome}/bin/mvn clean install -f MyWebApp/pom.xml"
+    }
+
+     stage ('Code Quality scan')  {
+       withSonarQubeEnv('sonarQube') {
+       sh "${mvnHome}/bin/mvn -f MyWebApp/pom.xml sonar:sonar"
+        }
+    }
+   
+      stage ('Code coverage')  {
+        jacoco()
+   }
+
+   stage ('Nexus upload')  {
+        nexusArtifactUploader(
+        nexusVersion: 'nexus3',
+        protocol: 'http',
+        nexusUrl: 'ec2-13-59-193-73.us-east-2.compute.amazonaws.com:8081/',
+        groupId: 'myGroupId',
+        version: '1.0-SNAPSHOT',
+        repository: 'maven-snapshots',
+        credentialsId: '74fbaf66-58ea-40f5-a38e-818b93123598',
+        artifacts: [
+            [artifactId: 'MyWebApp',
+             classifier: '',
+             file: 'MyWebApp/target/MyWebApp.war',
+             type: 'war']
+        ]
+     )
+    }
+    
+     stage ('DEV Deploy')  {
+      echo "deploying to DEV Env "
+      deploy adapters: [tomcat8(credentialsId: 'd8209ec9-5950-4417-a0be-0d5fb7d287a9', path: '', url:'http://ec2-13-59-243-137.us-east-2.compute.amazonaws.com:8090')], contextPath: null, war: '**/*.war'
+
+    }
+
+    stage ('DEV Approve')  {
+            echo "Taking approval from DEV Manager"     
+            timeout(time: 7, unit: 'DAYS') {
+            input message: 'Do you want to deploy?', submitter: 'admin'
+            }
+     }
+
+    stage ('Slack notification')  {
+    slackSend(channel:'#agunumakuta', message: "Job is successful, here is the info -  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+    }
+
+
+    stage ('QA Deploy')  {
+     echo "deploying to QA Env " 
+    deploy adapters: [tomcat8(credentialsId: 'd8209ec9-5950-4417-a0be-0d5fb7d287a9', path: '', url: 'http://ec2-13-59-243-137.us-east-2.compute.amazonaws.com:8090')], contextPath: null, war: '**/*.war'
+
+    }
+
+    stage ('QA Approve')  {
+    echo "Taking approval from QA manager"
+
+    timeout(time: 7, unit: 'DAYS') {
+        input message: 'Do you want to proceed to PROD?', submitter: 'admin,manager_userid'
+    }
+    }
+    
+   
+   }
